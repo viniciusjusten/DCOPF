@@ -1,0 +1,4 @@
+name = "DCOPF"
+uuid = "aff5150d-4f64-4a12-a7bf-f5cc14219b81"
+authors = ["viniciusjusten <viniciusjusten@psr-inc.com>"]
+version = "0.1.0"
