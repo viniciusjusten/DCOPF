@@ -17,19 +17,24 @@ function linear_flow!(model::DCOPFModel, inputs::DCOPFInputs)
         power_loss = zeros(AffExpr, num_bus, num_bus)
         model.expr["PowerLoss"] = power_loss
     else
-        power_loss_var = variableref(num_bus, num_bus)
-        power_loss = zeros(AffExpr, num_bus, num_bus)
-        for bus_from in 1:num_bus, bus_to in 1:num_bus
-            if bus_from != bus_to
-                power_loss_var[bus_from, bus_to] = @variable(
-                    optimizer_model,
-                    lower_bound = 0.0,
-                )
-                power_loss[bus_from, bus_to] = power_loss_var[bus_from, bus_to]
+        if inputs.linearize_loss
+            power_loss_var = variableref(num_bus, num_bus)
+            power_loss = zeros(AffExpr, num_bus, num_bus)
+            for bus_from in 1:num_bus, bus_to in 1:num_bus
+                if bus_from != bus_to
+                    power_loss_var[bus_from, bus_to] = @variable(
+                        optimizer_model,
+                        lower_bound = 0.0,
+                    )
+                    power_loss[bus_from, bus_to] = power_loss_var[bus_from, bus_to]
+                end
             end
+            model.var["PowerLossVar"] = power_loss_var
+            model.expr["PowerLoss"] = power_loss
+        else
+            power_loss = zeros(QuadExpr, num_bus, num_bus)
+            model.expr["PowerLoss"] = power_loss
         end
-        model.var["PowerLossVar"] = power_loss_var
-        model.expr["PowerLoss"] = power_loss
     end
     
     ### create variables
@@ -106,8 +111,12 @@ function linear_flow!(model::DCOPFModel, inputs::DCOPFInputs)
         )
     end
     if inputs.consider_losses
-        # creates epigraphs with power loss cuts
-        loss_cuts!(model, inputs)
+        if inputs.linearize_loss
+            # creates epigraphs with power loss cuts
+            loss_cuts!(model, inputs)
+        else
+            quadratic_loss!(model, inputs)
+        end
     end
     # save constraints
     model.con["LoadBalance"] = load_balance
@@ -160,6 +169,22 @@ function new_loss_cut!(
     else
         model.cuts["PowerLoss", current_iteration] = loss_cut
         return nothing
+    end
+end
+
+function quadratic_loss!(model::DCOPFModel, inputs::DCOPFInputs)
+    Ybus = inputs.Ybus
+    num_bus = size(Ybus)[1]
+
+    power_loss = model.expr["PowerLoss"]
+    phase = model.var["Phase"]
+
+    for bus_from in 1:num_bus, bus_to in 1:num_bus
+        conductance = -real(Ybus)[bus_from, bus_to]
+        power_loss[bus_from, bus_to] = @expression(
+            model.optimizer,
+            conductance * (phase[bus_from] - phase[bus_to])^2
+        )
     end
 end
 

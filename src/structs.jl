@@ -17,6 +17,7 @@ Base.@kwdef mutable struct DCOPFInputs
     generation_cost::Vector{Float64} = Float64[]
     demand::Vector{Float64} = Float64[]
     consider_losses::Bool = false
+    linearize_loss::Bool = false
     max_iteration::Int = 1
     tolerance::Float64 = 1e-4
 end
