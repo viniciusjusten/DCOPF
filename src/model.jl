@@ -75,6 +75,15 @@ function linear_flow!(model::DCOPFModel, inputs::DCOPFInputs)
     model.var["Phase"] = phase
     model.var["Generation"] = generation
     model.expr["GenerationPerBus"] = generation_per_bus
+
+    if inputs.consider_losses
+        if inputs.linearize_loss
+            # creates epigraphs with power loss cuts
+            loss_cuts!(model, inputs)
+        else
+            quadratic_loss!(model, inputs)
+        end
+    end
     
     ### define expressions
     for branch in 1:num_branches
@@ -110,7 +119,7 @@ function linear_flow!(model::DCOPFModel, inputs::DCOPFInputs)
             optimizer_model,
             generation_per_bus[bus] == 
                 get_bus_demand(inputs.buses, bus)
-                + power_injection[bus]
+                + power_injection[bus] + power_loss_per_bus[bus]
         )
     end
     for branch in 1:num_branches
@@ -122,14 +131,6 @@ function linear_flow!(model::DCOPFModel, inputs::DCOPFInputs)
             optimizer_model,
             flow[branch] >= -get_max_flow(inputs.branches, branch)
         )
-    end
-    if inputs.consider_losses
-        if inputs.linearize_loss
-            # creates epigraphs with power loss cuts
-            loss_cuts!(model, inputs)
-        else
-            quadratic_loss!(model, inputs)
-        end
     end
     # save constraints
     model.con["LoadBalance"] = load_balance
@@ -177,7 +178,6 @@ function new_loss_cut!(
         # cut is a vector [a, b] where y = a*x + b
         loss_cut[branch] = [loss_derivative, loss[branch] - (loss_derivative * phase_difference)]
     end
-    @show abs.(loss - results.expr["PowerLoss", current_iteration])
     if maximum(abs.(loss - results.expr["PowerLoss", current_iteration])) <= inputs.tolerance
         return :stop
     else

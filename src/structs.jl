@@ -39,9 +39,16 @@ Base.@kwdef mutable struct DCOPFInputs
     tolerance::Float64 = 1e-4
 end
 
+Base.@kwdef mutable struct SolutionQuality
+    solver_time::Dict{Int, Float64} = Dict{Int, Float64}()
+    gap::Dict{Int, Float64} = Dict{Int, Float64}()
+    objective_value::Dict{Int, Float64} = Dict{Int, Float64}()
+end
+
 Base.@kwdef mutable struct DCOPFResults
     # tuple is name and iteration
     var::Dict{Tuple{String, Float64}, Any} = Dict{Tuple{String, Float64}, Any}()
     expr::Dict{Tuple{String, Float64}, Any} = Dict{Tuple{String, Float64}, Any}()
     obj_exp::JuMP.AffExpr = zero(JuMP.AffExpr)
+    solution_quality::SolutionQuality = SolutionQuality()
 end
