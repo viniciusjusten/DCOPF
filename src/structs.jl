@@ -7,15 +7,32 @@ Base.@kwdef mutable struct DCOPFModel
     obj_exp::JuMP.AffExpr = zero(JuMP.AffExpr)
 end
 
-Base.@kwdef mutable struct DCOPFInputs
-    phase_reference::Int = 1
-    Ybus::Matrix{Complex{Float64}} = Complex{Float64}[;;]
-    min_flow::Matrix{Float64} = Float64[;;]
-    max_flow::Matrix{Float64} = Float64[;;]
+Base.@kwdef mutable struct DCOPFBuses
+    id::Vector{Int} = Int[]
+    type::Vector{Int} = Int[]
+    active_demand::Vector{Float64} = Float64[]
+end
+
+Base.@kwdef mutable struct DCOPFBranches
+    bus_from::Vector{Int} = Int[]
+    bus_to::Vector{Int} = Int[]
+    resistance::Vector{Float64} = Float64[]
+    reactance::Vector{Float64} = Float64[]
+    max_flow::Vector{Float64} = Float64[]
+end
+
+Base.@kwdef mutable struct DCOPFGenerators
     min_generation::Vector{Float64} = Float64[]
     max_generation::Vector{Float64} = Float64[]
-    generation_cost::Vector{Float64} = Float64[]
-    demand::Vector{Float64} = Float64[]
+    cost::Vector{Float64} = Float64[]
+    bus_id::Vector{Int} = Int[]
+end
+
+Base.@kwdef mutable struct DCOPFInputs
+    buses::DCOPFBuses = DCOPFBuses()
+    branches::DCOPFBranches = DCOPFBranches()
+    generators::DCOPFGenerators = DCOPFGenerators()
+    power_base::Float64 = 100.0
     consider_losses::Bool = false
     linearize_loss::Bool = false
     max_iteration::Int = 1

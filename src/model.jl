@@ -1,92 +1,103 @@
 function linear_flow!(model::DCOPFModel, inputs::DCOPFInputs)
     optimizer_model = model.optimizer
-    
-    Ybus = inputs.Ybus
-    Gbus = real(Ybus)
-    Xbus = imag(Ybus.^(-1))
-    num_bus = size(Ybus)[1]
-    
-    phase_reference = inputs.phase_reference
-    demand = inputs.demand
-    min_flow = inputs.min_flow
-    max_flow = inputs.max_flow
-    max_generation = inputs.max_generation
-    min_generation = inputs.min_generation
+
+    num_generators = get_num_generators(inputs.generators)
+    num_buses = get_num_buses(inputs.buses)
+    num_branches = get_num_branches(inputs.branches)
     
     if !inputs.consider_losses
-        power_loss = zeros(AffExpr, num_bus, num_bus)
+        power_loss = zeros(AffExpr, num_branches)
+        power_loss_per_bus = zeros(AffExpr, num_buses)
         model.expr["PowerLoss"] = power_loss
+        model.expr["PowerLossPerBus"] = power_loss_per_bus
     else
         if inputs.linearize_loss
-            power_loss_var = variableref(num_bus, num_bus)
-            power_loss = zeros(AffExpr, num_bus, num_bus)
-            for bus_from in 1:num_bus, bus_to in 1:num_bus
-                if bus_from != bus_to
-                    power_loss_var[bus_from, bus_to] = @variable(
-                        optimizer_model,
-                        lower_bound = 0.0,
-                    )
-                    power_loss[bus_from, bus_to] = power_loss_var[bus_from, bus_to]
-                end
+            power_loss_var = variableref(num_branches)
+            power_loss = zeros(AffExpr, num_branches)
+            for branch in 1:num_branches
+                bus_from, bus_to = get_buses_in_branch(inputs, branch)
+                power_loss_var[branch] = @variable(
+                    optimizer_model,
+                    lower_bound = 0.0,
+                )
+                power_loss[branch] = power_loss_var[branch]
             end
+            power_loss_per_bus = zeros(AffExpr, num_buses)
+            model.expr["PowerLossPerBus"] = power_loss_per_bus
+            model.expr["PowerLoss"] = power_loss
             model.var["PowerLossVar"] = power_loss_var
-            model.expr["PowerLoss"] = power_loss
         else
-            power_loss = zeros(QuadExpr, num_bus, num_bus)
+            power_loss = zeros(QuadExpr, num_branches)
+            power_loss_per_bus = zeros(QuadExpr, num_buses)
             model.expr["PowerLoss"] = power_loss
+            model.expr["PowerLossPerBus"] = power_loss_per_bus
         end
     end
     
     ### create variables
-    phase = variableref(num_bus)
-    generation = variableref(num_bus)
+    phase = variableref(num_buses)
+    generation = variableref(num_generators)
     
     ### create constraints
-    load_balance = constraintref(num_bus)
-    flow_lower_bound = constraintref(num_bus, num_bus)
-    flow_upper_bound = constraintref(num_bus, num_bus)
+    load_balance = constraintref(num_buses)
+    flow_lower_bound = constraintref(num_branches)
+    flow_upper_bound = constraintref(num_branches)
     
-    ### create expressionss
-    flow = zeros(AffExpr, num_bus, num_bus)
-    power_injection = expressionref(num_bus)
+    ### create expressions
+    flow = zeros(AffExpr, num_branches)
+    power_injection = zeros(AffExpr, num_buses)
+    generation_per_bus = zeros(AffExpr, num_buses)
     
     ### define variables
-    for bus in 1:num_bus
-        generation[bus] = @variable(
+    for gen in 1:num_generators
+        generation[gen] = @variable(
             optimizer_model,
-            lower_bound = min_generation[bus],
-            upper_bound = max_generation[bus]
+            lower_bound = get_min_generation(inputs.generators, gen),
+            upper_bound = get_max_generation(inputs.generators, gen),
         )
-        if bus == phase_reference
-            phase[bus] = @variable(
+    end
+    for bus in 1:num_buses
+        for gen in generators_in_bus(inputs.generators, inputs.buses.id[bus])
+            generation_per_bus[bus] = @expression(
                 optimizer_model,
-                lower_bound = 0,
-                upper_bound = 0
+                generation_per_bus[bus] + generation[gen]
             )
-        else
-            phase[bus] = @variable(
-                optimizer_model
-            )
+        end
+        phase[bus] = @variable(
+            optimizer_model
+        )
+        # bus for angle reference
+        if bus_is_reference(inputs.buses, bus)
+            JuMP.fix(phase[bus], 0.0; force = true)
         end
     end
     # save variables
     model.var["Phase"] = phase
     model.var["Generation"] = generation
+    model.expr["GenerationPerBus"] = generation_per_bus
     
     ### define expressions
-    for bus_from in 1:num_bus, bus_to in 1:num_bus
-        if bus_from == bus_to
-            continue
-        end
-        flow[bus_from, bus_to] = @expression(
+    for branch in 1:num_branches
+        bus_from, bus_to = get_buses_in_branch(inputs, branch)
+        flow[branch] = @expression(
             optimizer_model,
-            (phase[bus_from] - phase[bus_to])/Xbus[bus_from, bus_to]
+            (phase[bus_from] - phase[bus_to])/get_reactance(inputs.branches, branch)
         )
-    end
-    for bus in 1:num_bus
-        power_injection[bus] = @expression(
+        power_injection[bus_from] = @expression(
             optimizer_model,
-            sum(flow[bus, :])    
+            power_injection[bus_from] + flow[branch]
+        )
+        power_injection[bus_to] = @expression(
+            optimizer_model,
+            power_injection[bus_to] - flow[branch]
+        )
+        power_loss_per_bus[bus_from] = @expression(
+            optimizer_model,
+            power_loss_per_bus[bus_from] + power_loss[branch]/2
+        )
+        power_loss_per_bus[bus_to] = @expression(
+            optimizer_model,
+            power_loss_per_bus[bus_to] + power_loss[branch]/2
         )
     end
     # save expressions
@@ -94,20 +105,22 @@ function linear_flow!(model::DCOPFModel, inputs::DCOPFInputs)
     model.expr["PowerInjection"] = power_injection
     
     ### define constraints
-    for bus in 1:num_bus
+    for bus in 1:num_buses
         load_balance[bus] = @constraint(
             optimizer_model,
-            generation[bus] == demand[bus] + power_injection[bus] + sum(power_loss[bus, :])/2
+            generation_per_bus[bus] == 
+                get_bus_demand(inputs.buses, bus)
+                + power_injection[bus]
         )
     end
-    for bus_from in 1:num_bus, bus_to in 1:num_bus
-        flow_upper_bound[bus_from, bus_to] = @constraint(
+    for branch in 1:num_branches
+        flow_upper_bound[branch] = @constraint(
             optimizer_model,
-            flow[bus_from, bus_to] <= max_flow[bus_from, bus_to]
+            flow[branch] <= get_max_flow(inputs.branches, branch)
         )
-        flow_lower_bound[bus_from, bus_to] = @constraint(
+        flow_lower_bound[branch] = @constraint(
             optimizer_model,
-            flow[bus_from, bus_to] >= min_flow[bus_from, bus_to]
+            flow[branch] >= -get_max_flow(inputs.branches, branch)
         )
     end
     if inputs.consider_losses
@@ -126,16 +139,17 @@ function linear_flow!(model::DCOPFModel, inputs::DCOPFInputs)
 end
 
 function loss_cuts!(model::DCOPFModel, inputs::DCOPFInputs)
-    Ybus = inputs.Ybus
-    num_bus = size(Ybus)[1]
+    num_branches = get_num_branches(inputs.branches)
     phase = model.var["Phase"]
+    # get key and elements in model.cuts dictionary
     for (k, group) in model.cuts
         if "PowerLoss" in k
-            for bus_from in 1:num_bus, bus_to in 1:num_bus
+            for branch in 1:num_branches
+                bus_from, bus_to = get_buses_in_branch(inputs, branch)
                 @constraint(
                     model.optimizer,
-                    model.expr["PowerLoss"][bus_from, bus_to] >= 
-                        [phase[bus_from] - phase[bus_to], 1]' * group[bus_from, bus_to]
+                    model.expr["PowerLoss"][branch] >= 
+                        [phase[bus_from] - phase[bus_to], 1]' * group[branch]
                 )
             end
         end
@@ -148,22 +162,22 @@ function new_loss_cut!(
     results::DCOPFResults,
     current_iteration::Int
 )
-    Ybus = inputs.Ybus
-    num_bus = size(Ybus)[1]
+    num_branches = get_num_branches(inputs.branches)
 
     phase = results.var["Phase", current_iteration]
-    loss_cut = Array{Vector{Float64}, 2}(undef, num_bus, num_bus)
-    loss = zeros(num_bus, num_bus)
+    loss_cut = Array{Vector{Float64}, 1}(undef, num_branches)
+    loss = zeros(num_branches)
 
-    for bus_from in 1:num_bus, bus_to in 1:num_bus
+    for branch in 1:num_branches
+        bus_from, bus_to = get_buses_in_branch(inputs, branch)
         phase_difference = phase[bus_from] - phase[bus_to]
-        conductance = -real(Ybus)[bus_from, bus_to]
+        conductance = get_conductance(inputs.branches, branch)
         loss_derivative = transmission_loss_derivative(phase_difference, conductance)
-        loss[bus_from, bus_to] = transmission_loss(phase_difference, conductance)
+        loss[branch] = transmission_loss(phase_difference, conductance)
         # cut is a vector [a, b] where y = a*x + b
-        loss_cut[bus_from, bus_to] = [loss_derivative, loss[bus_from, bus_to] - (loss_derivative * phase_difference)]
+        loss_cut[branch] = [loss_derivative, loss[branch] - (loss_derivative * phase_difference)]
     end
-
+    @show abs.(loss - results.expr["PowerLoss", current_iteration])
     if maximum(abs.(loss - results.expr["PowerLoss", current_iteration])) <= inputs.tolerance
         return :stop
     else
@@ -173,15 +187,15 @@ function new_loss_cut!(
 end
 
 function quadratic_loss!(model::DCOPFModel, inputs::DCOPFInputs)
-    Ybus = inputs.Ybus
-    num_bus = size(Ybus)[1]
+    num_branches = get_num_branches(inputs.branches)
 
     power_loss = model.expr["PowerLoss"]
     phase = model.var["Phase"]
 
-    for bus_from in 1:num_bus, bus_to in 1:num_bus
-        conductance = -real(Ybus)[bus_from, bus_to]
-        power_loss[bus_from, bus_to] = @expression(
+    for branch in 1:num_branches
+        conductance = get_conductance(inputs.branches, branch)
+        bus_from, bus_to = get_buses_in_branch(inputs, branch)
+        power_loss[branch] = @expression(
             model.optimizer,
             conductance * (phase[bus_from] - phase[bus_to])^2
         )
