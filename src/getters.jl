@@ -50,3 +50,8 @@ end
 function get_bus_to(branches::DCOPFBranches, branch_idx::Int)
     return branches.bus_to[branch_idx]
 end
+function get_buses_in_branch(inputs::DCOPFInputs, branch_idx::Int)
+    bus_from = get_bus_idx_from_bus_id(inputs.buses, inputs.branches.bus_from[branch_idx])
+    bus_to = get_bus_idx_from_bus_id(inputs.buses, inputs.branches.bus_to[branch_idx])
+    return bus_from, bus_to
+end
