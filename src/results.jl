@@ -70,3 +70,22 @@ function write_all_data_frames(inputs, results)
     gen_df = write_generation_results(inputs, results)
     return branch_df, bus_df, gen_df
 end
+
+function plot_cuts(inputs::DCOPFInputs, model::DCOPFModel, results::DCOPFResults, branch::Int)
+    Plots.plotly()
+    last_it = maximum(keys(results.solution_quality.solver_time))
+    x = LinRange(-.4,.4,100)
+    tl = zeros(100);
+    for i in eachindex(x)                                                                                             
+        tl[i] = transmission_loss(x[i], get_conductance(inputs.branches, branch))                                                 
+    end
+    plt = plot(x, tl, label = "Perdas originais (quadrática)")
+    for i in 2:last_it
+        v = model.cuts[("PowerLoss", i-1)][branch]
+        reshape(v, length(v), 1)
+        y = [x ones(100)] * v
+        plt = plot!(x, y, label = "Corte iteração $(i-1)")
+    end
+    plt = plot!(legend = :outertopright, ylabel = "Perdas (pu)", xlabel = "Fase (rad)")
+    plt = plot!(title = "Linha $branch", size = (800, 400))
+end
