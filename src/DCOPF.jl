@@ -1,6 +1,6 @@
 module DCOPF
 
-using JuMP, DataFrames, Plots
+using JuMP, HiGHS, Ipopt, DataFrames, Plots, JLD2, CSV
 
 include("structs.jl")
 include("common_functions.jl")

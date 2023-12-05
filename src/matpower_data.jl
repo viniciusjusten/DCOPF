@@ -18,6 +18,11 @@ function read_matpower(file::String)
     gen_end_idx = findfirst(x -> occursin("];", x), file_lines[gen_line_idx:end, :])
     gen_lines = file_lines[CartesianIndex(gen_line_idx+1, 1):CartesianIndex(gen_line_idx-2, 0)+gen_end_idx]
 
+    gen_cost_line_idx = findfirst(x -> occursin("mpc.gencost", x), file_lines)
+    gen_cost_init_idx = findfirst(x -> occursin("[", x), file_lines[gen_cost_line_idx:end])
+    gen_cost_end_idx = findfirst(x -> occursin("];", x), file_lines[gen_cost_line_idx:end, :])
+    gen_cost_lines = file_lines[CartesianIndex(gen_cost_line_idx+1, 1):CartesianIndex(gen_cost_line_idx-2, 0)+gen_cost_end_idx]
+
     bus_ = Matrix{Float64}(undef, length(bus_lines), 13)
     for line_idx in eachindex(bus_lines)
         fixed_line = replace(bus_lines[line_idx], "\t" => "")
@@ -42,42 +47,57 @@ function read_matpower(file::String)
     for line_idx in eachindex(gen_lines)
         fixed_line = replace(gen_lines[line_idx], "\t" => "")
         fixed_line = replace(fixed_line, ";\r\n" => "")
+        fixed_line = replace(fixed_line, "; % NUC" => "")
+        fixed_line = replace(fixed_line, "; % PEL" => "")
+        fixed_line = replace(fixed_line, "; % COW" => "")
+        fixed_line = replace(fixed_line, "; % SYNC" => "")
+        fixed_line = replace(fixed_line, "; % NG" => "")
         vec_string = split(fixed_line, " ")
         elements = filter(x -> x != "", vec_string)
         gen_numbers = parse.(Float64, elements)
-        gen_[line_idx, :] = gen_numbers
+        gen_[line_idx, :] = gen_numbers[1:10]
     end
-    return bus_, branch_, gen_
+
+    gen_cost_ = Matrix{Float64}(undef, length(gen_cost_lines), 7)
+    for line_idx in eachindex(gen_cost_lines)
+        fixed_line = replace(gen_cost_lines[line_idx], "\t" => "")
+        fixed_line = replace(fixed_line, ";\r\n" => "")
+        fixed_line = replace(fixed_line, "; % NUC" => "")
+        fixed_line = replace(fixed_line, "; % PEL" => "")
+        fixed_line = replace(fixed_line, "; % COW" => "")
+        fixed_line = replace(fixed_line, "; % SYNC" => "")
+        fixed_line = replace(fixed_line, "; % NG" => "")
+        vec_string = split(fixed_line, " ")
+        elements = filter(x -> x != "", vec_string)
+        gen_cost_numbers = parse.(Float64, elements)
+        gen_cost_[line_idx, :] = gen_cost_numbers
+    end
+
+    return bus_, branch_, gen_, gen_cost_
 end
 
-function matpower_to_dcopf_structs(
-    bus_::Matrix{Float64},
-    branch_::Matrix{Float64},
-    gen_::Matrix{Float64}
+function matpower_to_inputs!(
+    matpower_file::String,
+    inputs::DCOPFInputs,
 )
-    buses = DCOPF.DCOPFBuses()
-    branches = DCOPF.DCOPFBranches()
-    generators = DCOPF.DCOPFGenerators()
+    bus_, branch_, gen_, gen_cost_ = read_matpower(matpower_file)
 
-    buses.id = Int.(bus_[:, 1])
-    buses.type = Int.(bus_[:, 2])
-    buses.active_demand = bus_[:, 3]/100 # power base
+    power_base = inputs.power_base
 
-    branches.bus_from = Int.(branch_[:, 1])
-    branches.bus_to = Int.(branch_[:, 2])
-    branches.resistance = branch_[:, 3]
-    branches.reactance = branch_[:, 4]
-    branches.max_flow = branch_[:, 6]/100 # power base
+    inputs.buses.id = Int.(bus_[:, 1])
+    inputs.buses.type = Int.(bus_[:, 2])
+    inputs.buses.active_demand = bus_[:, 3]/power_base
 
-    generators.min_generation = gen_[:, 10]/100 # power base
-    generators.max_generation = gen_[:, 9]/100 # power base
-    generators.cost = ones(length(gen_[:, 9])) # TODO - read from matpower
-    generators.bus_id = Int.(gen_[:, 1])
+    inputs.branches.bus_from = Int.(branch_[:, 1])
+    inputs.branches.bus_to = Int.(branch_[:, 2])
+    inputs.branches.resistance = branch_[:, 3]
+    inputs.branches.reactance = branch_[:, 4]
+    inputs.branches.max_flow = branch_[:, 6]/power_base
 
-    return buses, branches, generators
-end
+    inputs.generators.min_generation = gen_[:, 10]/power_base
+    inputs.generators.max_generation = gen_[:, 9]/power_base
+    inputs.generators.cost = gen_cost_[:, 6]
+    inputs.generators.bus_id = Int.(gen_[:, 1])
 
-function matpower_file_to_dcopf_structs(file::String)
-    bus_, branch_, gen_ = read_matpower(file)
-    buses, branches, generators = matpower_to_dcopf_structs(bus_, branch_, gen_)
+    return nothing
 end

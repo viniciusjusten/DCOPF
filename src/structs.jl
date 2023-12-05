@@ -49,6 +49,7 @@ Base.@kwdef mutable struct DCOPFResults
     # tuple is name and iteration
     var::Dict{Tuple{String, Float64}, Any} = Dict{Tuple{String, Float64}, Any}()
     expr::Dict{Tuple{String, Float64}, Any} = Dict{Tuple{String, Float64}, Any}()
+    shadow_prices::Dict{String, Any} = Dict{String, Any}()
     obj_exp::JuMP.AffExpr = zero(JuMP.AffExpr)
     solution_quality::SolutionQuality = SolutionQuality()
 end
