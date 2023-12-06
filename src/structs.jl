@@ -32,6 +32,8 @@ Base.@kwdef mutable struct DCOPFInputs
     buses::DCOPFBuses = DCOPFBuses()
     branches::DCOPFBranches = DCOPFBranches()
     generators::DCOPFGenerators = DCOPFGenerators()
+    fix_variables::Dict{String, Any} = Dict{String, Any}()
+    initialize_variables::Dict{String, Any} = Dict{String, Any}()
     power_base::Float64 = 100.0
     consider_losses::Bool = false
     linearize_loss::Bool = false

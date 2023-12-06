@@ -10,8 +10,19 @@ end
 
 function in_keys(dict::Dict, element::Any)
     for k in keys(dict)
-        if element in k
+        if occursin(element, k)
             return true
+        end
+    end
+    return false
+end
+
+function any_binary(model::DCOPFModel)
+    for (k, vars) in model.var
+        for var in vars
+            if is_binary(var)
+                return true
+            end
         end
     end
     return false

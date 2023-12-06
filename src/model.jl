@@ -179,11 +179,12 @@ function generation!(model::DCOPFModel, inputs::DCOPFInputs)
     ### create variables and expressions
     generation = variableref(num_generators)
     generation_per_bus = zeros(AffExpr, num_buses)
-    generator_on = variableref(num_generators)
-    generator_on_expr = ones(AffExpr, num_generators)
+    commit = variableref(num_generators)
+    commit_expr = ones(AffExpr, num_generators)
 
     ### create constraints
-    generator_on_constraint = constraintref(num_generators)
+    commit_constraint_lower = constraintref(num_generators)
+    commit_constraint_upper = constraintref(num_generators)
 
     ### define variables and expressions
     for gen in 1:num_generators
@@ -194,11 +195,17 @@ function generation!(model::DCOPFModel, inputs::DCOPFInputs)
         )
         # add binaries only if generator has on cost
         if generator_has_on_cost(inputs.generators, gen)
-            generator_on[gen] = @variable(
+            commit[gen] = @variable(
                 optimizer_model,
                 binary = true,
             )
-            generator_on_expr[gen] = generator_on[gen]
+            commit_expr[gen] = commit[gen]
+            if inputs.fix_variables["FixCommit"]
+                if isassigned(inputs.fix_variables["Commit"], gen)
+                    JuMP.fix(commit[gen], inputs.fix_variables["Commit"][gen]; force = true)
+                    JuMP.unset_binary(commit[gen])
+                end
+            end
         end
     end
     for bus in 1:num_buses
@@ -212,22 +219,31 @@ function generation!(model::DCOPFModel, inputs::DCOPFInputs)
 
     ### define constraints
     for gen in 1:num_generators
-        generator_on_constraint[gen] = @constraint(
+        commit_constraint_lower[gen] = @constraint(
             optimizer_model,
-            generation[gen] <= get_max_generation(inputs.generators, gen) * generator_on_expr[gen]
+            generation[gen] >= get_min_generation(inputs.generators, gen) * commit_expr[gen]
+        )
+        commit_constraint_upper[gen] = @constraint(
+            optimizer_model,
+            generation[gen] <= get_max_generation(inputs.generators, gen) * commit_expr[gen]
         )
     end
 
     ### save variables and expressions
     model.var["Generation"] = generation
     model.expr["GenerationPerBus"] = generation_per_bus
-    model.var["GeneratorOn"] = generator_on
-    model.expr["GeneratorOnExpr"] = generator_on_expr
+    model.var["Commit"] = commit
+    model.expr["CommitExpr"] = commit_expr
 
     ### save constraints
-    model.con["GeneratorOnConstraint"] = generator_on_constraint
+    model.con["CommitConstraintLower"] = commit_constraint_lower
+    model.con["CommitConstraintUpper"] = commit_constraint_upper
 
     return nothing
+end
+
+function fix_commit!(model::DCOPFModel, value::Vector{Int})
+    commit = 1
 end
 
 function linear_flow!(args...)
