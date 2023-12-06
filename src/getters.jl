@@ -25,8 +25,14 @@ end
 function get_max_generation(generators::DCOPFGenerators, gen_idx::Int)
     return generators.max_generation[gen_idx]
 end
-function get_generation_cost(generators::DCOPFGenerators, gen_idx::Int)
-    return generators.cost[gen_idx]
+function get_generation_power_cost(generators::DCOPFGenerators, gen_idx::Int)
+    return generators.cost[gen_idx, 1]
+end
+function get_generation_on_cost(generators::DCOPFGenerators, gen_idx::Int)
+    return generators.cost[gen_idx, end]
+end
+function generator_has_on_cost(generators::DCOPFGenerators, gen_idx::Int)
+    return get_generation_on_cost(generators, gen_idx) != 0
 end
 
 ### branches

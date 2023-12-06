@@ -24,7 +24,7 @@ end
 Base.@kwdef mutable struct DCOPFGenerators
     min_generation::Vector{Float64} = Float64[]
     max_generation::Vector{Float64} = Float64[]
-    cost::Vector{Float64} = Float64[]
+    cost::Matrix{Float64} = Float64[;;]
     bus_id::Vector{Int} = Int[]
 end
 
