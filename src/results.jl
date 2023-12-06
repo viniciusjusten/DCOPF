@@ -1,4 +1,4 @@
-function save_all_results!(model::DCOPFModel, results::DCOPFResults, current_iteration::Int)
+function save_all_results!(inputs::DCOPFInputs, model::DCOPFModel, results::DCOPFResults, current_iteration::Int)
     for (key, group) in model.var
         var_values = fill(NaN, size(group))
         for i in eachindex(group)
@@ -17,8 +17,19 @@ function save_all_results!(model::DCOPFModel, results::DCOPFResults, current_ite
         end
         results.expr[key, current_iteration] = expr_values
     end
+    save_start_values(inputs, results, current_iteration)
     save_solution_quality!(model, results, current_iteration)
     return nothing
+end
+
+function save_start_values(inputs::DCOPFInputs, results::DCOPFResults, current_iteration::Int)
+    if current_iteration > 1
+        inputs.initialize_variables["Iteration"] += 1
+        inputs.initialize_variables["Phase"] = results.var["Phase", current_iteration]
+        inputs.initialize_variables["PowerLossVar"] = results.var["PowerLossVar", current_iteration]
+        inputs.initialize_variables["Generation"] = results.var["Generation", current_iteration]
+        inputs.initialize_variables["Commit"] = results.var["Commit", current_iteration]
+    end
 end
 
 function save_shadow_prices!(model::DCOPFModel, results::DCOPFResults)

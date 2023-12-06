@@ -7,9 +7,16 @@ function phase!(model::DCOPFModel, inputs::DCOPFInputs)
     phase = variableref(num_buses)
 
     ### define variables
+    # start variables
+    start_phase = fill(nothing, (size(phase)))
+    if inputs.consider_variable_initialization && inputs.initialize_variables["Iteration"] > 1
+        start_phase = inputs.initialize_variables["Phase"]
+    end
+
     for bus in 1:num_buses
         phase[bus] = @variable(
-            optimizer_model
+            optimizer_model,
+            start = start_phase[bus],
         )
         # bus for angle reference
         if bus_is_reference(inputs.buses, bus)
@@ -127,10 +134,18 @@ function active_loss!(model::DCOPFModel, inputs::DCOPFInputs)
         if inputs.linearize_loss
             power_loss_var = variableref(num_branches)
             power_loss = zeros(AffExpr, num_branches)
+
+            # start variables
+            start_power_loss = fill(nothing, (size(power_loss_var)))
+            if inputs.consider_variable_initialization && inputs.initialize_variables["Iteration"] > 1
+                start_power_loss = inputs.initialize_variables["PowerLossVar"]
+            end
+            
             for branch in 1:num_branches
                 power_loss_var[branch] = @variable(
                     optimizer_model,
                     lower_bound = 0.0,
+                    start = start_power_loss[branch],
                 )
                 power_loss[branch] = power_loss_var[branch]
             end
@@ -188,16 +203,27 @@ function generation!(model::DCOPFModel, inputs::DCOPFInputs)
 
     ### define variables and expressions
     for gen in 1:num_generators
+
+        # start variables
+        start_generation = fill(nothing, (size(generation)))
+        start_commit = fill(nothing, (size(commit)))
+        if inputs.consider_variable_initialization && inputs.initialize_variables["Iteration"] > 1
+            start_generation = inputs.initialize_variables["Generation"]
+            start_commit = inputs.initialize_variables["Commit"]
+        end
+
         generation[gen] = @variable(
             optimizer_model,
             lower_bound = get_min_generation(inputs.generators, gen),
             upper_bound = get_max_generation(inputs.generators, gen),
+            start = start_generation[gen],
         )
         # add binaries only if generator has on cost
         if generator_has_on_cost(inputs.generators, gen)
             commit[gen] = @variable(
                 optimizer_model,
                 binary = true,
+                start = start_commit[gen],
             )
             commit_expr[gen] = commit[gen]
             if inputs.fix_variables["FixCommit"]

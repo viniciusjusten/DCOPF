@@ -19,8 +19,11 @@ end
 
 function any_binary(model::DCOPFModel)
     for (k, vars) in model.var
-        for var in vars
-            if is_binary(var)
+        for idx in eachindex(vars)
+            if !isassigned(vars, idx)
+                continue
+            end
+            if is_binary(vars[idx])
                 return true
             end
         end
