@@ -17,7 +17,8 @@ function save_all_results!(model::DCOPFModel, results::DCOPFResults, current_ite
         end
         results.expr[key, current_iteration] = expr_values
     end
-    save_shadow_prices!(model, results)
+    # TODO - add duals
+    # save_shadow_prices!(model, results)
     save_solution_quality!(model, results, current_iteration)
     return nothing
 end
@@ -44,8 +45,8 @@ function write_branch_results(inputs::DCOPFInputs, results::DCOPFResults)
         "Max Flow (MW)" => inputs.branches.max_flow * Sb,
         "Flow (MW)" => results.expr["Flow", last_it] * Sb,
         "Power Loss (MW)" => results.expr["PowerLoss", last_it] * Sb,
-        "Positive flow at the limit" => results.shadow_prices["NegativeFlowAtMax"],
-        "Negative flow at the limit" => results.shadow_prices["PositiveFlowAtMax"],
+        # "Positive flow at the limit" => results.shadow_prices["NegativeFlowAtMax"],
+        # "Negative flow at the limit" => results.shadow_prices["PositiveFlowAtMax"],
     )
     return branches_df
 end
@@ -57,7 +58,7 @@ function write_bus_results(inputs::DCOPFInputs, results::DCOPFResults)
         "Bus" => inputs.buses.id,
         "Demand (MW)" => inputs.buses.active_demand * Sb,
         "Phase (deg)" => rad2deg.(results.var["Phase", last_it]),
-        "Marginal cost (\$/MW)" => results.shadow_prices["MarginalCostPerBus"]/Sb,
+        # "Marginal cost (\$/MW)" => results.shadow_prices["MarginalCostPerBus"]/Sb,
     )
     return buses_df
 end
@@ -67,7 +68,8 @@ function write_generation_results(inputs::DCOPFInputs, results::DCOPFResults)
     Sb = inputs.power_base
     generation_df = DataFrame(
         "Bus" => inputs.generators.bus_id,
-        "Cost" => inputs.generators.cost,
+        "Power Cost" => inputs.generators.cost[:, 1],
+        "On Cost" => inputs.generators.cost[:, 2],
         "Min Generation (MW)" => inputs.generators.min_generation * Sb,
         "Max Generation (MW)" => inputs.generators.max_generation * Sb,
         "Generation (MW)" => results.var["Generation", last_it] * Sb,

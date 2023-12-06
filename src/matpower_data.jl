@@ -27,6 +27,7 @@ function read_matpower(file::String)
     for line_idx in eachindex(bus_lines)
         fixed_line = replace(bus_lines[line_idx], "\t" => "")
         fixed_line = replace(fixed_line, ";\r\n" => "")
+        fixed_line = replace(fixed_line, ";\n" => "")
         vec_string = split(fixed_line, " ")
         elements = filter(x -> x != "", vec_string)
         bus_numbers = parse.(Float64, elements)
@@ -37,6 +38,7 @@ function read_matpower(file::String)
     for line_idx in eachindex(branch_lines)
         fixed_line = replace(branch_lines[line_idx], "\t" => "")
         fixed_line = replace(fixed_line, ";\r\n" => "")
+        fixed_line = replace(fixed_line, ";\n" => "")
         vec_string = split(fixed_line, " ")
         elements = filter(x -> x != "", vec_string)
         branch_numbers = parse.(Float64, elements)
@@ -52,6 +54,7 @@ function read_matpower(file::String)
         fixed_line = replace(fixed_line, "; % COW" => "")
         fixed_line = replace(fixed_line, "; % SYNC" => "")
         fixed_line = replace(fixed_line, "; % NG" => "")
+        fixed_line = replace(fixed_line, ";\n" => "")
         vec_string = split(fixed_line, " ")
         elements = filter(x -> x != "", vec_string)
         gen_numbers = parse.(Float64, elements)
@@ -67,6 +70,7 @@ function read_matpower(file::String)
         fixed_line = replace(fixed_line, "; % COW" => "")
         fixed_line = replace(fixed_line, "; % SYNC" => "")
         fixed_line = replace(fixed_line, "; % NG" => "")
+        fixed_line = replace(fixed_line, ";\n" => "")
         vec_string = split(fixed_line, " ")
         elements = filter(x -> x != "", vec_string)
         gen_cost_numbers = parse.(Float64, elements)
@@ -96,7 +100,7 @@ function matpower_to_inputs!(
 
     inputs.generators.min_generation = gen_[:, 10]/power_base
     inputs.generators.max_generation = gen_[:, 9]/power_base
-    inputs.generators.cost = gen_cost_[:, 6]
+    inputs.generators.cost = gen_cost_[:, 6:7]
     inputs.generators.bus_id = Int.(gen_[:, 1])
 
     return nothing

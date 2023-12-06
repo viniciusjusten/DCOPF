@@ -179,6 +179,11 @@ function generation!(model::DCOPFModel, inputs::DCOPFInputs)
     ### create variables and expressions
     generation = variableref(num_generators)
     generation_per_bus = zeros(AffExpr, num_buses)
+    generator_on = variableref(num_generators)
+    generator_on_expr = ones(AffExpr, num_generators)
+
+    ### create constraints
+    generator_on_constraint = constraintref(num_generators)
 
     ### define variables and expressions
     for gen in 1:num_generators
@@ -187,6 +192,14 @@ function generation!(model::DCOPFModel, inputs::DCOPFInputs)
             lower_bound = get_min_generation(inputs.generators, gen),
             upper_bound = get_max_generation(inputs.generators, gen),
         )
+        # add binaries only if generator has on cost
+        if generator_has_on_cost(inputs.generators, gen)
+            generator_on[gen] = @variable(
+                optimizer_model,
+                binary = true,
+            )
+            generator_on_expr[gen] = generator_on[gen]
+        end
     end
     for bus in 1:num_buses
         for gen in generators_in_bus(inputs.generators, inputs.buses.id[bus])
@@ -197,9 +210,22 @@ function generation!(model::DCOPFModel, inputs::DCOPFInputs)
         end
     end
 
+    ### define constraints
+    for gen in 1:num_generators
+        generator_on_constraint[gen] = @constraint(
+            optimizer_model,
+            generation[gen] <= get_max_generation(inputs.generators, gen) * generator_on_expr[gen]
+        )
+    end
+
     ### save variables and expressions
     model.var["Generation"] = generation
     model.expr["GenerationPerBus"] = generation_per_bus
+    model.var["GeneratorOn"] = generator_on
+    model.expr["GeneratorOnExpr"] = generator_on_expr
+
+    ### save constraints
+    model.con["GeneratorOnConstraint"] = generator_on_constraint
 
     return nothing
 end
