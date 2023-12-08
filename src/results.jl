@@ -1,4 +1,4 @@
-function save_all_results!(model::DCOPFModel, results::DCOPFResults, current_iteration::Int)
+function save_all_results!(inputs::DCOPFInputs, model::DCOPFModel, results::DCOPFResults, current_iteration::Int)
     for (key, group) in model.var
         var_values = fill(NaN, size(group))
         for i in eachindex(group)
@@ -17,10 +17,19 @@ function save_all_results!(model::DCOPFModel, results::DCOPFResults, current_ite
         end
         results.expr[key, current_iteration] = expr_values
     end
-    # TODO - add duals
-    # save_shadow_prices!(model, results)
+    save_start_values(inputs, results, current_iteration)
     save_solution_quality!(model, results, current_iteration)
     return nothing
+end
+
+function save_start_values(inputs::DCOPFInputs, results::DCOPFResults, current_iteration::Int)
+    if current_iteration > 1
+        inputs.initialize_variables["Iteration"] += 1
+        inputs.initialize_variables["Phase"] = results.var["Phase", current_iteration]
+        inputs.initialize_variables["PowerLossVar"] = results.var["PowerLossVar", current_iteration]
+        inputs.initialize_variables["Generation"] = results.var["Generation", current_iteration]
+        inputs.initialize_variables["Commit"] = results.var["Commit", current_iteration]
+    end
 end
 
 function save_shadow_prices!(model::DCOPFModel, results::DCOPFResults)
@@ -45,9 +54,15 @@ function write_branch_results(inputs::DCOPFInputs, results::DCOPFResults)
         "Max Flow (MW)" => inputs.branches.max_flow * Sb,
         "Flow (MW)" => results.expr["Flow", last_it] * Sb,
         "Power Loss (MW)" => results.expr["PowerLoss", last_it] * Sb,
-        # "Positive flow at the limit" => results.shadow_prices["NegativeFlowAtMax"],
-        # "Negative flow at the limit" => results.shadow_prices["PositiveFlowAtMax"],
     )
+
+    if in_keys(results.shadow_prices, "NegativeFlowAtMax")
+        branches_df[!, "Positive flow at the limit"] = results.shadow_prices["NegativeFlowAtMax"]
+    end
+    if in_keys(results.shadow_prices, "PositiveFlowAtMax")
+        branches_df[!, "Negative flow at the limit"] = results.shadow_prices["PositiveFlowAtMax"]
+    end
+
     return branches_df
 end
 
@@ -58,8 +73,11 @@ function write_bus_results(inputs::DCOPFInputs, results::DCOPFResults)
         "Bus" => inputs.buses.id,
         "Demand (MW)" => inputs.buses.active_demand * Sb,
         "Phase (deg)" => rad2deg.(results.var["Phase", last_it]),
-        # "Marginal cost (\$/MW)" => results.shadow_prices["MarginalCostPerBus"]/Sb,
     )
+    
+    if in_keys(results.shadow_prices, "MarginalCostPerBus")
+        buses_df[!, "Marginal cost (\$/MW)"] = results.shadow_prices["MarginalCostPerBus"]/Sb
+    end
     return buses_df
 end
 
