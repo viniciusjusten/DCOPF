@@ -30,3 +30,16 @@ function any_binary(model::DCOPFModel)
     end
     return false
 end
+
+function max_number_in_dict_tuple_key(
+    dict::Dict,
+    element_string::String
+)
+    numbers = []
+    for k in keys(dict)
+        if k[1] == element_string
+            push!(numbers, k[2])
+        end
+    end
+    return maximum(numbers)
+end
