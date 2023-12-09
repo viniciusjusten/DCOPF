@@ -33,12 +33,13 @@ Base.@kwdef mutable struct DCOPFInputs
     branches::DCOPFBranches = DCOPFBranches()
     generators::DCOPFGenerators = DCOPFGenerators()
     fix_variables::Dict{String, Any} = Dict{String, Any}()
-    initialize_variables::Dict{String, Any} = Dict{String, Any}()
+    initialize_variables::Dict{String, Any} = Dict("Iteration" => 1)
     consider_variable_initialization::Bool = false
     power_base::Float64 = 100.0
     consider_losses::Bool = false
     linearize_loss::Bool = false
     max_iteration::Int = 1
+    num_cuts_per_iteration::Int = 1
     tolerance::Float64 = 1e-4
 end
 

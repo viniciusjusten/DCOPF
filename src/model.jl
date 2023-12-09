@@ -305,6 +305,22 @@ function new_loss_cut!(
     results::DCOPFResults,
     current_iteration::Int
 )
+    if inputs.num_cuts_per_iteration > 1
+        @info "multiple cuts per iteration"
+        single_cut!(model, inputs, results, current_iteration)
+        multiple_cuts!(model, inputs, results, current_iteration)
+    else
+        @info "one cut per iteration"
+        single_cut!(model, inputs, results, current_iteration)
+    end
+end
+
+function single_cut!(
+    model::DCOPFModel,
+    inputs::DCOPFInputs,
+    results::DCOPFResults,
+    current_iteration::Int
+)
     num_branches = get_num_branches(inputs.branches)
 
     phase = results.var["Phase", current_iteration]
@@ -323,8 +339,44 @@ function new_loss_cut!(
     if maximum(abs.(loss - results.expr["PowerLoss", current_iteration])) <= inputs.tolerance
         return :stop
     else
+        if inputs.num_cuts_per_iteration > 1
+            idx = max_number_in_dict_tuple_key(model.cuts, "PowerLoss")
+        else
+            idx = current_iteration
+        end
         model.cuts["PowerLoss", current_iteration] = loss_cut
         return nothing
+    end  
+end
+
+function multiple_cuts!(
+    model::DCOPFModel,
+    inputs::DCOPFInputs,
+    results::DCOPFResults,
+    current_iteration::Int
+)
+    num_branches = get_num_branches(inputs.branches)
+
+    phase = results.var["Phase", current_iteration]
+    loss_cut = Array{Vector{Float64}, 1}(undef, num_branches)
+    loss = zeros(num_branches)
+
+    max_power_loss_idx = max_number_in_dict_tuple_key(model.cuts, "PowerLoss")
+
+    num_cuts = inputs.num_cuts_per_iteration
+    cuts_coef = LinRange(1, 1+1/(10^(num_cuts-1)), num_cuts)
+
+    for cut in 2:num_cuts
+        for branch in 1:num_branches
+            bus_from, bus_to = get_buses_in_branch(inputs, branch)
+            phase_difference = (phase[bus_from] - phase[bus_to])*(cuts_coef[cut])
+            conductance = get_conductance(inputs.branches, branch)
+            loss_derivative = transmission_loss_derivative(phase_difference, conductance)
+            loss[branch] = transmission_loss(phase_difference, conductance)
+            # cut is a vector [a, b] where y = a*x + b
+            loss_cut[branch] = [loss_derivative, loss[branch] - (loss_derivative * phase_difference)]
+        end
+        model.cuts["PowerLoss", max_power_loss_idx + cut - 1] = loss_cut
     end
 end
 
